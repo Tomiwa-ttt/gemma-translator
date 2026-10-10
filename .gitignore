@@ -23,3 +23,7 @@ server.log
 *.ogg
 *.flac
 coverage/
+
+# Local benchmark output (may contain personal recordings or text)
+comparison_results.*
+test_audio/

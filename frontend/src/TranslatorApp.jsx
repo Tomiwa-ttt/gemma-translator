@@ -34,6 +34,7 @@ import { playBlip } from "./utils/audio-blip"
 const AVAILABLE_LANGUAGES = [
   { code: "ar", name: "Arabic", voice: "tts", ttsLang: "ar" },
   { code: "en", name: "English", voice: "tts", ttsLang: "en" },
+  { code: "fr", name: "French", voice: "tts", ttsLang: "fr" },
   { code: "es", name: "Spanish", voice: "tts", ttsLang: "es" },
   { code: "ja", name: "Japanese", voice: "tts", ttsLang: "ja" },
   { code: "zh", name: "Chinese", voice: "tts", ttsLang: "zh" },

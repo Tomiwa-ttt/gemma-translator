@@ -31,6 +31,15 @@ export default function ResponseDrawer({
   // Determine if we have any data to show (or if the drawer was explicitly activated)
   const hasData = isActive || transcriptionSource !== ""
 
+  // Shrink the font for long utterances so the full sentence fits its bubble.
+  const sizeClass = (text) => {
+    const n = (text || "").length
+    if (n > 200) return " bubble-text-xs"
+    if (n > 120) return " bubble-text-sm"
+    if (n > 70) return " bubble-text-md"
+    return ""
+  }
+
   return (
     <div
       className={`response-drawer ${isActive ? "active" : ""}`}
@@ -54,7 +63,7 @@ export default function ResponseDrawer({
                 <div className="bubble-label">
                   {transcriptionSource || "LANG 1"}
                 </div>
-                <div className="bubble-text">
+                <div className={"bubble-text" + sizeClass(transcriptionText)}>
                   {transcriptionText || "— listening —"}
                 </div>
               </div>
@@ -64,7 +73,7 @@ export default function ResponseDrawer({
                 <div className="bubble-label">
                   {translationTarget || "LANG 2"}
                 </div>
-                <div className="bubble-text">
+                <div className={"bubble-text" + sizeClass(translationText)}>
                   {translationText || "— waiting —"}
                 </div>
               </div>

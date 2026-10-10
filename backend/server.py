@@ -47,6 +47,7 @@ _stt_lock = threading.RLock()
 TTS_LANG_MAP = {
     "ar": "ar-msa",
     "en": "en-us",
+    "fr": "fr-fr",
     "es": "es-es",
     "ja": "ja-jp",
     "zh": "zh-hans",

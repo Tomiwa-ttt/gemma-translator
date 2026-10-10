@@ -1,150 +1,99 @@
-<img width="960" height="540" src="https://storage.googleapis.com/experiments-uploads/gemma-translator/gemma-translator.gif" />
+# Gemma Edge Translator: English to French
 
-# Gemma Translator
+An offline voice translator that turns spoken English into spoken French. Every model runs on the device, with no internet connection, API keys or cloud costs after setup.
 
-This repo was built with the assistance of [Google Antigravity](https://antigravity.google/) and includes code to run an on-device, fully offline voice translator powered by [Gemma 4](https://ai.google.dev/gemma/docs/core) and [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-lm). This project features a web frontend optimized for small handheld displays (e.g., 480x320) and a Python API server (`http.server`) that communicates with Gemma. Text-to-speech is powered by [Moonshine](https://github.com/moonshine-ai/moonshine).
+This is the software prototype for **The Arc**, a pocket translator built around a Raspberry Pi 5. It currently runs on a Mac while the hardware is being put together.
 
-https://github.com/user-attachments/assets/343072ce-dc78-44a7-a783-99312845cabe
+Built on [google-gemma/gemma-translator](https://github.com/google-gemma/gemma-translator) by Google Creative Lab (Apache 2.0).
 
-## Features
+## How it works
 
-- **On-Device Inference**: Uses LiteRT-LM to run the `gemma4-e2b` model entirely locally. No internet required after setup.
-- **Voice Interface**: Captures microphone audio, processes it, and sends it to the local model.
-- **Optimized UI**: Retro-terminal styling custom-built for small hardware screens (like Raspberry Pi displays).
-- **Unified Startup**: One script to launch the LLM server, the Python API, and the React frontend.
-
-## Prerequisites
-
-- Python 3.10+
-- Node.js 18+ (20 LTS recommended) & npm — installed automatically by `deploy-pi.sh` on Raspberry Pi OS / Debian
-- Linux or macOS
-
-## Required Hardware
-
-- **Compute**: Raspberry Pi 5 with 8GB RAM
-- **Audio Input**: Microphone or USB audio capture interface
-- **Audio Output**: Speaker or headphone output device
-- **Display**: Display monitor or touchscreen (e.g., 480x320 kiosk display)
-
-<img width="3024" height="1672" src="https://storage.googleapis.com/experiments-uploads/gemma-translator/gemma-translator-cad.gif" />
-
-## Setup Instructions
-
-1. **Make Scripts Executable**
-   Ensure the setup, download, start, and deployment scripts have execute permissions:
-   ```bash
-   chmod +x setup.sh download_model.sh start.sh deploy-pi.sh
-   ```
-
-2. **Install Dependencies**
-   Run the setup script to create a Python virtual environment (`venv`) and install all required packages:
-   ```bash
-   ./setup.sh
-   ```
-
-3. **Download the Model**
-   Run the model downloader script to fetch the `gemma4-e2b` model from Hugging Face and import it into LiteRT-LM:
-   ```bash
-   ./download_model.sh
-   ```
-
-## Running the Application
-
-Start all services (LiteRT-LM, the Python API server, and the Vite Web UI) in development mode:
-```bash
-./start.sh
+```
+Microphone -> Moonshine STT -> English text -> Gemma 4 E2B -> French text -> Piper TTS (fr_FR-siwis) -> Speaker
 ```
 
-To run in production mode (skipping Vite dev server and serving compiled UI assets from `frontend/dist/` via `backend/server.py` on port 3000):
+| Stage | Model | Runtime |
+|---|---|---|
+| Speech to text | Moonshine (English) | moonshine-voice |
+| Translation | Gemma 4 E2B (instruction tuned) | LiteRT-LM, CPU |
+| Text to speech | Piper `fr_FR-siwis-medium` | moonshine-voice |
+
+## What I changed
+
+- **French support.** Added French to the language selector and mapped it to the `fr-fr` voice in the backend.
+- **Lower mic latency.** The original opened the microphone on every key press, which added 1 to 5 seconds before audio was captured. The mic now opens once and stays ready, and a 0.5 second pre-roll buffer keeps the first word from being clipped.
+- **Audio playback fix on macOS.** With the mic held open, Chrome's echo cancellation put macOS into voice-call mode and silenced the translated speech. It is now disabled, with noise suppression and auto gain kept on.
+- **Long-text layout.** Long sentences no longer overlap between the input and output panels. Each panel stays in its own half and the font size scales down with text length.
+- **Desktop cursor.** The kiosk build hid the mouse cursor on narrow windows. It now stays visible.
+- **Pipeline benchmark.** Added `compare_pipelines.py` to test whether Gemma's built-in audio input can replace the separate speech-to-text model.
+
+## Experiment: does Gemma need a separate speech model?
+
+Gemma 4 E2B accepts audio directly, so one model could in principle go from English speech straight to French text. I tested this against the current two-model pipeline on five recorded English phrases, ranging from a short question to a longer sentence with a number and a day of the week. Both pipelines used the same recordings, the same Gemma model and the same CPU backend.
+
+- **A:** Moonshine STT, then Gemma translates the text
+- **B:** Gemma receives the audio and outputs French directly
+
+| | A: Moonshine + Gemma | B: Gemma only |
+|---|---|---|
+| Median time | 2.15s | 8.20s |
+| Time range | 2.1s to 3.0s | 1.9s to 9.4s |
+| Fully correct translations | 2 of 5 | 2 of 5 |
+| Shows the English it heard | Yes | No |
+| Invented content | No | Yes, on 1 of 5 |
+
+Measured on an Apple Silicon laptop, CPU only, model loading excluded.
+
+**Findings**
+
+- **Accuracy was even, but the errors differed.** A's mistakes came from speech recognition, such as hearing "bill" as "video", after which Gemma translated the wrong word correctly. B recognised some words better but invented a phrase when a clip had silence before the speech.
+- **A was faster and more consistent.** A stayed between 2 and 3 seconds. B was quick on short clips but slowed sharply on clips longer than about 4.5 seconds.
+- **A is easier to verify.** It shows the English it heard, so a user can catch a recognition error. B gives no way to check.
+- **Proper names were misheard by both.**
+
+**Decision:** keep the two-model pipeline. On a Raspberry Pi 5, which is several times slower than a laptop, B's delays would be too long for conversation. Accuracy work will focus on a stronger speech-to-text model.
+
+Run it yourself with `python compare_pipelines.py --record`. Results are saved locally to `comparison_results.md` and `comparison_results.csv`.
+
+## Run it on macOS
+
+Requirements: Homebrew, Python 3.12, Node 18+, about 6 GB of free disk space.
+
 ```bash
-./start.sh --prod
+brew install python@3.12 node bash
+git clone https://github.com/Tomiwa-ttt/gemma-translator.git
+cd gemma-translator
+
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
+
+./download_model.sh
+"$(brew --prefix)/bin/bash" ./start.sh
 ```
 
-The application will be accessible at:
-- **Web UI (Dev)**: `http://localhost:5173`
-- **Web UI (Prod) / API server**: `http://localhost:3000`
-- **LiteRT-LM**: `http://localhost:9379`
+Open http://localhost:5173 in Chrome and allow microphone access.
 
-## Raspberry Pi Appliance Deployment
+- Use the arrow keys to set Lane 1 to **English**, press Space, set Lane 2 to **French**, then press Space again.
+- Hold **Z** while speaking and release to translate.
 
-To deploy as a permanent systemd kiosk service on a Raspberry Pi 5 (8GB):
-```bash
-./deploy-pi.sh
-```
-This automated script installs Debian audio/venv packages, sets up the Python environment, builds production UI assets, downloads the LiteRT model, registers the systemd unit from `deploy/gemma-translator.service`, and configures LXDE GUI autostart (`~/.config/lxsession/rpd-x/autostart`) to launch Chromium in kiosk mode pointing to `http://localhost:3000`.
+**macOS notes**
 
-## Project Structure
+- The upstream `setup.sh` fails because it requires package hashes that `requirements.txt` does not contain. The `pip install` line above replaces it.
+- `start.sh` needs Bash 4.3 or newer, and macOS ships Bash 3.2. That is why it runs through Homebrew's Bash.
+- The first French translation pauses while the French voice downloads once. Later ones are immediate.
+- If `download_model.sh` stalls, download the model file directly and import it with `litert-lm import gemma-4-E2B-it.litertlm gemma4-e2b`.
 
-- `frontend/` - React (Vite) web frontend (`index.html`, `src/`, styles, and Vite configuration).
-- `backend/` - Python API server (`server.py` and `requirements.txt`) for Moonshine STT, moonshine-voice TTS, and model proxying.
-- `deploy/` - Parameterizable systemd service unit template (`gemma-translator.service`).
-- `stl/` - STL files for 3D printing the hardware case.
-- `setup.sh` - Automates Python virtual environment creation and dependency installation.
-- `download_model.sh` - Fetches the required LiteRT model.
-- `start.sh` - Multi-process launcher supporting `--prod` and development modes.
-- `deploy-pi.sh` - One-command Raspberry Pi automated deployment script.
+## Known limitations
 
-## Keyboard Shortcuts
+- **One-way only.** Moonshine has no French model, so the French lane can speak but not listen.
+- **Proper names** are often misheard.
+- **Speaker feedback.** On laptop speakers, pressing Z while the translation is still playing lets the mic pick up the French audio.
 
-The Gemma Translator supports **two keyboard modes**. Switch between them anytime from the **Settings panel → "Keyboard Mode"** dropdown. The choice is remembered across restarts (stored in the browser's `localStorage` under the key `keyboardMode`).
+## Credits and license
 
-The app has two lanes (two people facing each other on the kiosk):
-- **Lane 1 / Person 1** — the left/top lane.
-- **Lane 2 / Person 2** — the right/bottom lane.
+Based on [Gemma Translator](https://github.com/google-gemma/gemma-translator) by Alan Yam, Shashwath Santosh and Dan Motzenbecker at Google Creative Lab. Uses [Gemma 4](https://ai.google.dev/gemma), [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) and [Moonshine](https://github.com/moonshine-ai/moonshine).
 
-Each lane has a rotating language "revolver" and records speech, which is transcribed (Moonshine STT), translated (Gemma), and spoken back in the other lane's language (moonshine-voice TTS).
+Licensed under Apache 2.0. See [LICENSE](LICENSE).
 
-### Landscape Mode (default) — "active person"
-One lane is the **active person** at a time. The active lane is framed with **corner brackets on all four corners**. You drive everything from a single set of keys and switch focus with Space.
-
-| Key | Action | Description |
-| :--- | :--- | :--- |
-| **Spacebar** | Switch active person | Toggles the active lane (Person 1 ⇄ Person 2). Disabled while recording. |
-| **Z** | Record (push-to-talk) | Hold to record the **active** person; release to transcribe & translate. |
-| **← Left Arrow** | Previous language | Rotates the **active** person's language backward. |
-| **→ Right Arrow** | Next language | Rotates the **active** person's language forward. |
-
-Notes:
-- The active lane shows four-corner brackets; while it is recording, the brackets invert to black along with the lane's color reversal.
-- Best for one-handed / single-operator use.
-
-### Vertical Mode — "two-hand" (original mapping)
-Each lane has its **own dedicated keys** — there is no active-person concept and **no bracket highlight**. Both people can be controlled independently.
-
-| Key | Action | Description |
-| :--- | :--- | :--- |
-| **Z** | Record — Person 1 (push-to-talk) | Hold to record Lane 1; release to transcribe & translate. |
-| **X** | Record — Person 2 (push-to-talk) | Hold to record Lane 2; release to transcribe & translate. |
-| **← Left Arrow** | Previous language — Person 1 | Rotates Lane 1's language backward. |
-| **→ Right Arrow** | Next language — Person 1 | Rotates Lane 1's language forward. |
-| **− Minus** (`_`) | Previous language — Person 2 | Rotates Lane 2's language backward. |
-| **+ Plus** (`=`) | Next language — Person 2 | Rotates Lane 2's language forward. |
-
-Notes:
-- No corner-bracket selection highlight in this mode.
-- Best for two operators, each handling their own side.
-
-### Common behavior (both modes)
-- **Input focus guard:** all shortcuts are ignored while focus is on a configuration field (`<input>`, `<textarea>`, or `<select>`) — e.g. when editing the API endpoint or settings.
-- **Recording lock:** language rotation is blocked while a recording is in progress.
-- **Keyboard-driven:** recording and language rotation are keyboard-only in the current build; on-screen touch controls are not enabled.
-
-### Switching modes
-Open **Settings (⚙)** → **Keyboard Mode** → choose **Landscape** or **Vertical**. The change takes effect immediately and persists on the device.
-
-| Setting value | Mode |
-| :--- | :--- |
-| `landscape` | Active-person scheme (Space / Z / ← →) — default |
-| `vertical` | Two-hand scheme (Z / X / ← → / − +) |
-
-## Credits
-Made by a small team at [Google Creative Lab](https://github.com/googlecreativelab):
-- [Alan Yam](https://github.com/alanvww)
-- [Shashwath Santosh](https://x.com/shashwth)
-- [Dan Motzenbecker](https://github.com/dmotz)
-
-## Disclaimer
-
-This is not an officially supported Google product. This project is not
-eligible for the [Google Open Source Software Vulnerability Rewards
-Program](https://bughunters.google.com/open-source-security).
+Modifications by Tomiwa Ajibola ([@Tomiwa-ttt](https://github.com/Tomiwa-ttt)).
